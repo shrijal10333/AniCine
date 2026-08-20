@@ -128,7 +128,9 @@ app.post('/api/rooms', (req, res) => {
         media: media || null,
         playing: media || null,
         currentTime: 0,
-        isPlaying: false,
+        isPlaying: true,
+        serverIndex: 0,
+        audio: 'en',
         lastTimeUpdate: Date.now(),
         createdAt: Date.now()
     };
@@ -158,7 +160,10 @@ app.post('/api/rooms', (req, res) => {
             roomName: activeRooms[roomId].roomName,
             host: finalHost,
             hasPassword: !!password,
-            media: activeRooms[roomId].media
+            media: activeRooms[roomId].media,
+            playing: activeRooms[roomId].playing,
+            currentTime: 0,
+            isPlaying: true
         }
     });
 });
@@ -177,6 +182,13 @@ app.get('/api/rooms/:roomId', (req, res) => {
     if (!room) {
         return res.status(404).json({ error: 'Room not found' });
     }
+
+    let estimatedTime = room.currentTime || 0;
+    if (room.isPlaying && room.lastTimeUpdate) {
+        const elapsed = (Date.now() - room.lastTimeUpdate) / 1000;
+        estimatedTime += elapsed;
+    }
+
     res.json({
         id: room.id,
         roomName: room.roomName,
@@ -185,8 +197,11 @@ app.get('/api/rooms/:roomId', (req, res) => {
         viewers: room.viewers,
         media: room.media,
         playing: room.playing,
-        currentTime: room.currentTime,
-        isPlaying: room.isPlaying
+        currentTime: Math.floor(estimatedTime),
+        isPlaying: room.isPlaying,
+        serverIndex: room.serverIndex || 0,
+        audio: room.audio || 'en',
+        lastTimeUpdate: room.lastTimeUpdate
     });
 });
 
@@ -381,7 +396,10 @@ io.on('connection', (socket) => {
             socket.emit('video_sync', {
                 ...room.playing,
                 currentTime: Math.floor(estimatedTime),
-                isPlaying: room.isPlaying
+                isPlaying: room.isPlaying,
+                serverIndex: room.serverIndex || 0,
+                audio: room.audio || 'en',
+                lastTimeUpdate: room.lastTimeUpdate
             });
         }
 
@@ -395,6 +413,26 @@ io.on('connection', (socket) => {
             message: `${socket.username} has joined the Watch Party! 🎉`,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         });
+    });
+
+    socket.on('request_sync', (data) => {
+        const roomId = data?.room?.toString().toUpperCase();
+        const room = activeRooms[roomId];
+        if (room && room.playing) {
+            let estimatedTime = room.currentTime || 0;
+            if (room.isPlaying && room.lastTimeUpdate) {
+                const elapsed = (Date.now() - room.lastTimeUpdate) / 1000;
+                estimatedTime += elapsed;
+            }
+            socket.emit('video_sync', {
+                ...room.playing,
+                currentTime: Math.floor(estimatedTime),
+                isPlaying: room.isPlaying,
+                serverIndex: room.serverIndex || 0,
+                audio: room.audio || 'en',
+                lastTimeUpdate: room.lastTimeUpdate
+            });
+        }
     });
 
     socket.on('kick_user', (data) => {
@@ -436,15 +474,18 @@ io.on('connection', (socket) => {
         const roomId = data?.room?.toString().toUpperCase();
         const room = activeRooms[roomId];
         if (room && socket.username?.toLowerCase() === room.hostName?.toLowerCase()) {
-            room.currentTime = data.currentTime || 0;
+            room.currentTime = Number(data.currentTime) || 0;
             room.isPlaying = data.isPlaying !== false;
             room.lastTimeUpdate = Date.now();
+            if (data.serverIndex !== undefined) room.serverIndex = data.serverIndex;
+            if (data.audio) room.audio = data.audio;
 
-            socket.to(roomId).emit('video_sync', {
-                type: room.playing?.type,
-                id: room.playing?.id,
+            socket.to(roomId).emit('time_sync', {
                 currentTime: room.currentTime,
-                isPlaying: room.isPlaying
+                isPlaying: room.isPlaying,
+                lastTimeUpdate: room.lastTimeUpdate,
+                serverIndex: room.serverIndex,
+                audio: room.audio
             });
         }
     });
@@ -453,11 +494,28 @@ io.on('connection', (socket) => {
         const roomId = data?.room?.toString().toUpperCase();
         const room = activeRooms[roomId];
         if (room && socket.username?.toLowerCase() === room.hostName?.toLowerCase()) {
-            room.playing = { type: data.type, id: data.id, title: data.title };
-            room.currentTime = 0;
+            room.playing = { 
+                type: data.type, 
+                id: data.id, 
+                title: data.title,
+                poster_path: data.poster_path,
+                season: data.season,
+                episode: data.episode
+            };
+            room.currentTime = Number(data.currentTime) || 0;
             room.isPlaying = true;
             room.lastTimeUpdate = Date.now();
-            io.to(roomId).emit('video_sync', { ...data, currentTime: 0, isPlaying: true });
+            room.serverIndex = data.serverIndex !== undefined ? data.serverIndex : 0;
+            room.audio = data.audio || 'en';
+
+            io.to(roomId).emit('video_sync', { 
+                ...room.playing, 
+                currentTime: room.currentTime, 
+                isPlaying: true,
+                serverIndex: room.serverIndex,
+                audio: room.audio,
+                lastTimeUpdate: room.lastTimeUpdate
+            });
         }
     });
 

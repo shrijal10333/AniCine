@@ -1,19 +1,62 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Users, Loader2, Film, MessageCircle, ArrowLeft, Send, Share2, X, Check, Server, Sparkles, CheckCircle2, Search, Play, Tv, RefreshCw, Volume2, Shield } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Users, Loader2, Film, MessageCircle, ArrowLeft, Send, Share2, X, Check, Server, Search, Play, Tv, RefreshCw, Volume2, Shield, Radio, Sparkles } from 'lucide-react';
 import { fetchApi, getImageUrl } from '../api';
 import { getBackendUrl, createSmartSocket, PartyChannelFallback } from '../utils/backend';
 import ServerSettingsModal from '../components/ServerSettingsModal';
 
 const SERVERS = [
-    { name: 'Vidlink', url: (id, t, s = 1, e = 1, lang = 'en') => t === 'movie' ? `https://vidlink.pro/movie/${id}?primaryColor=1db954&audio=${lang}&lang=${lang}&ds=${lang}` : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=1db954&audio=${lang}&lang=${lang}&ds=${lang}` },
-    { name: 'VidSrc', url: (id, t, s = 1, e = 1, lang = 'en') => t === 'movie' ? `https://vidsrc.me/embed/movie?tmdb=${id}&lang=${lang}` : `https://vidsrc.me/embed/tv?tmdb=${id}&sea=${s}&epi=${e}&lang=${lang}` },
-    { name: 'VidSrc PRO', url: (id, t, s = 1, e = 1, lang = 'en') => t === 'movie' ? `https://vidsrc.pm/embed/movie/${id}?audio=${lang}` : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}?audio=${lang}` },
-    { name: 'Embed.su', url: (id, t, s = 1, e = 1, lang = 'en') => t === 'movie' ? `https://embed.su/embed/movie/${id}?audio=${lang}` : `https://embed.su/embed/tv/${id}/${s}/${e}?audio=${lang}` },
+    { 
+        name: 'Vidlink', 
+        url: (id, t, s = 1, e = 1, lang = 'en', startAt = 0) => {
+            const timeParam = startAt > 3 ? `&startAt=${Math.floor(startAt)}` : '';
+            return t === 'movie' 
+                ? `https://vidlink.pro/movie/${id}?primaryColor=1db954&autoplay=true${timeParam}&audio=${lang}&lang=${lang}&ds=${lang}` 
+                : `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=1db954&autoplay=true${timeParam}&audio=${lang}&lang=${lang}&ds=${lang}`;
+        }
+    },
+    { 
+        name: 'VidSrc', 
+        url: (id, t, s = 1, e = 1, lang = 'en', startAt = 0) => {
+            const timeParam = startAt > 3 ? `&t=${Math.floor(startAt)}` : '';
+            return t === 'movie' 
+                ? `https://vidsrc.me/embed/movie?tmdb=${id}&lang=${lang}${timeParam}&autoplay=1` 
+                : `https://vidsrc.me/embed/tv?tmdb=${id}&sea=${s}&epi=${e}&lang=${lang}${timeParam}&autoplay=1`;
+        }
+    },
+    { 
+        name: 'VidSrc PRO', 
+        url: (id, t, s = 1, e = 1, lang = 'en', startAt = 0) => {
+            const timeParam = startAt > 3 ? `?startAt=${Math.floor(startAt)}` : '';
+            return t === 'movie' 
+                ? `https://vidsrc.pm/embed/movie/${id}${timeParam}` 
+                : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}${timeParam}`;
+        }
+    },
+    { 
+        name: 'Embed.su', 
+        url: (id, t, s = 1, e = 1, lang = 'en', startAt = 0) => {
+            const timeParam = startAt > 3 ? `?time=${Math.floor(startAt)}` : '';
+            return t === 'movie' 
+                ? `https://embed.su/embed/movie/${id}${timeParam}` 
+                : `https://embed.su/embed/tv/${id}/${s}/${e}${timeParam}`;
+        }
+    },
 ];
 
 let socket = null;
 let fallbackChannel = null;
+
+const formatSeconds = (sec) => {
+    if (!sec || isNaN(sec) || sec < 0) return '00:00';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    if (h > 0) {
+        return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+};
 
 export default function PartyRoomWaiting() {
     const { roomCode } = useParams();
@@ -26,6 +69,11 @@ export default function PartyRoomWaiting() {
     const [currentEpisode, setCurrentEpisode] = useState(1);
     const [episodesList, setEpisodesList] = useState([]);
     const [selectedAudio, setSelectedAudio] = useState('en');
+
+    // Live Sync Time State
+    const [liveTime, setLiveTime] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(true);
+    const [isSynced, setIsSynced] = useState(true);
 
     const [messages, setMessages] = useState([]);
     const [currentMsg, setCurrentMsg] = useState("");
@@ -43,13 +91,55 @@ export default function PartyRoomWaiting() {
     const [trendingItems, setTrendingItems] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    const lastVideoRef = useRef(null);
+    const lastVideoKeyRef = useRef(null);
     const messagesEndRef = useRef(null);
+    const playbackTimerRef = useRef(null);
+    const liveTimeRef = useRef(0);
+    liveTimeRef.current = liveTime;
 
     const isHost = sessionStorage.getItem('wp_isHost') === 'true';
-    const username = sessionStorage.getItem('wp_username') || "Guest_" + Math.floor(1000 + Math.random() * 9000);
+    const [username] = useState(() => {
+        const stored = sessionStorage.getItem('wp_username');
+        if (stored) return stored;
+        const generated = "Guest_" + Math.floor(1000 + Math.random() * 9000);
+        sessionStorage.setItem('wp_username', generated);
+        return generated;
+    });
 
-    // Load initial room data from backend or local storage cache
+    // Apply synchronized video and time
+    const applySyncData = useCallback((data) => {
+        if (!data || !data.id || !data.type) return;
+
+        const incomingKey = `${data.type}-${data.id}-${data.season || 1}-${data.episode || 1}`;
+        const isNewMedia = lastVideoKeyRef.current !== incomingKey;
+
+        if (isNewMedia) {
+            lastVideoKeyRef.current = incomingKey;
+            setPlayingVideo({
+                id: data.id,
+                type: data.type,
+                title: data.title || 'Live Stream',
+                poster_path: data.poster_path || '',
+                season: data.season || 1,
+                episode: data.episode || 1
+            });
+            if (data.season) setCurrentSeason(Number(data.season) || 1);
+            if (data.episode) setCurrentEpisode(Number(data.episode) || 1);
+            if (data.serverIndex !== undefined) setActiveServer(Number(data.serverIndex) || 0);
+            if (data.audio) setSelectedAudio(data.audio);
+        }
+
+        if (data.currentTime !== undefined) {
+            const parsedTime = Number(data.currentTime) || 0;
+            setLiveTime(parsedTime);
+        }
+
+        if (data.isPlaying !== undefined) {
+            setIsPlaying(data.isPlaying);
+        }
+    }, []);
+
+    // Load initial room data from backend
     useEffect(() => {
         const baseUrl = getBackendUrl();
         const formattedCode = (roomCode || '').toUpperCase();
@@ -59,10 +149,13 @@ export default function PartyRoomWaiting() {
             setRoomInfo(data);
             const targetMedia = data.playing || data.media;
             if (targetMedia && targetMedia.id && targetMedia.type) {
-                setPlayingVideo(targetMedia);
-                if (targetMedia.season) setCurrentSeason(Number(targetMedia.season) || 1);
-                if (targetMedia.episode) setCurrentEpisode(Number(targetMedia.episode) || 1);
-                lastVideoRef.current = `${targetMedia.type}-${targetMedia.id}-${targetMedia.season || 1}-${targetMedia.episode || 1}`;
+                applySyncData({
+                    ...targetMedia,
+                    currentTime: data.currentTime || 0,
+                    isPlaying: data.isPlaying !== false,
+                    serverIndex: data.serverIndex || 0,
+                    audio: data.audio || 'en'
+                });
             }
         };
 
@@ -89,7 +182,7 @@ export default function PartyRoomWaiting() {
                 } catch (e) {}
             });
 
-        // Load trending items for quick in-room pick
+        // Load trending items for in-room picker
         fetchApi('/trending/all/day')
             .then(data => {
                 if (data?.results) {
@@ -97,7 +190,52 @@ export default function PartyRoomWaiting() {
                 }
             })
             .catch(() => {});
-    }, [roomCode]);
+    }, [roomCode, applySyncData]);
+
+    // Continuous Live Clock ticker
+    useEffect(() => {
+        if (!playingVideo) return;
+
+        playbackTimerRef.current = setInterval(() => {
+            if (isPlaying) {
+                setLiveTime(prev => prev + 1);
+            }
+        }, 1000);
+
+        return () => {
+            if (playbackTimerRef.current) clearInterval(playbackTimerRef.current);
+        };
+    }, [playingVideo, isPlaying]);
+
+    // Host Heartbeat: Broadcast current playback time to all viewers periodically
+    useEffect(() => {
+        if (!isHost || !playingVideo) return;
+
+        const formattedCode = (roomCode || '').toUpperCase();
+        const heartbeat = setInterval(() => {
+            const currentT = liveTimeRef.current;
+            if (socket && socket.connected) {
+                socket.emit('time_update', {
+                    room: formattedCode,
+                    currentTime: currentT,
+                    isPlaying: true,
+                    serverIndex: activeServer,
+                    audio: selectedAudio,
+                    season: currentSeason,
+                    episode: currentEpisode
+                });
+            }
+            if (fallbackChannel) {
+                fallbackChannel.emit('time_sync', {
+                    currentTime: currentT,
+                    isPlaying: true,
+                    serverIndex: activeServer
+                });
+            }
+        }, 3000);
+
+        return () => clearInterval(heartbeat);
+    }, [isHost, playingVideo, roomCode, activeServer, selectedAudio, currentSeason, currentEpisode]);
 
     // Load episodes list when playing TV show
     useEffect(() => {
@@ -116,7 +254,6 @@ export default function PartyRoomWaiting() {
     useEffect(() => {
         const formattedCode = (roomCode || '').toUpperCase();
         
-        // Setup local broadcast channel for peer/multi-tab sync
         fallbackChannel = new PartyChannelFallback(formattedCode, username);
         
         fallbackChannel.on('receive_message', (msg) => {
@@ -129,18 +266,18 @@ export default function PartyRoomWaiting() {
         });
 
         fallbackChannel.on('video_sync', (data) => {
-            if (data && data.type && data.id) {
-                const videoKey = `${data.type}-${data.id}-${data.season || 1}-${data.episode || 1}`;
-                if (lastVideoRef.current !== videoKey) {
-                    lastVideoRef.current = videoKey;
-                    setPlayingVideo(data);
-                    if (data.season) setCurrentSeason(Number(data.season) || 1);
-                    if (data.episode) setCurrentEpisode(Number(data.episode) || 1);
+            applySyncData(data);
+        });
+
+        fallbackChannel.on('time_sync', (data) => {
+            if (!isHost && data?.currentTime !== undefined) {
+                const diff = Math.abs(liveTimeRef.current - Number(data.currentTime));
+                if (diff > 5) {
+                    setLiveTime(Number(data.currentTime));
                 }
             }
         });
 
-        // Setup Socket.io
         try {
             socket = createSmartSocket();
             if (socket) {
@@ -154,13 +291,18 @@ export default function PartyRoomWaiting() {
                 });
 
                 socket.on('video_sync', (data) => {
-                    if (data && data.type && data.id) {
-                        const videoKey = `${data.type}-${data.id}-${data.season || 1}-${data.episode || 1}`;
-                        if (lastVideoRef.current !== videoKey) {
-                            lastVideoRef.current = videoKey;
-                            setPlayingVideo(data);
-                            if (data.season) setCurrentSeason(Number(data.season) || 1);
-                            if (data.episode) setCurrentEpisode(Number(data.episode) || 1);
+                    applySyncData(data);
+                });
+
+                socket.on('time_sync', (data) => {
+                    if (!isHost && data?.currentTime !== undefined) {
+                        const parsed = Number(data.currentTime) || 0;
+                        const diff = Math.abs(liveTimeRef.current - parsed);
+                        if (diff > 5) {
+                            setLiveTime(parsed);
+                        }
+                        if (data.serverIndex !== undefined && data.serverIndex !== activeServer) {
+                            setActiveServer(data.serverIndex);
                         }
                     }
                 });
@@ -189,14 +331,13 @@ export default function PartyRoomWaiting() {
             setServerConnected(false);
         }
 
-        // Initialize default viewer list with current user
         setViewers([{ id: 'self', username, isHost }]);
 
         return () => {
             if (socket) socket.disconnect();
             if (fallbackChannel) fallbackChannel.close();
         };
-    }, [roomCode, username, isHost, navigate]);
+    }, [roomCode, username, isHost, navigate, applySyncData, activeServer]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -207,7 +348,7 @@ export default function PartyRoomWaiting() {
         if (!currentMsg.trim()) return;
         const msgData = {
             id: Math.random().toString(36).substring(2, 9),
-            room: roomCode,
+            room: (roomCode || '').toUpperCase(),
             author: username,
             message: currentMsg,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -227,7 +368,7 @@ export default function PartyRoomWaiting() {
     const handleKick = (userId, targetUsername) => {
         if (window.confirm(`Are you sure you want to remove ${targetUsername}?`)) {
             if (socket && socket.connected) {
-                socket.emit('kick_user', { room: roomCode, userId });
+                socket.emit('kick_user', { room: (roomCode || '').toUpperCase(), userId });
             }
             setViewers(prev => prev.filter(u => u.id !== userId));
         }
@@ -240,6 +381,28 @@ export default function PartyRoomWaiting() {
         setTimeout(() => setCopied(false), 2500);
     };
 
+    // Manual Re-sync with Host (Viewer button)
+    const handleReSyncWithHost = () => {
+        const formattedCode = (roomCode || '').toUpperCase();
+        setIsSynced(false);
+        
+        if (socket && socket.connected) {
+            socket.emit('request_sync', { room: formattedCode });
+        }
+
+        const baseUrl = getBackendUrl();
+        fetch(`${baseUrl}/api/rooms/${formattedCode}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && !data.error) {
+                    applySyncData(data);
+                }
+            })
+            .catch(() => {});
+
+        setTimeout(() => setIsSynced(true), 800);
+    };
+
     // In-room media selection by host
     const handleSelectMediaInRoom = (item, seasonNum = 1, episodeNum = 1) => {
         const mediaData = {
@@ -249,22 +412,27 @@ export default function PartyRoomWaiting() {
             poster_path: item.poster_path || '',
             season: item.media_type === 'tv' || item.first_air_date ? seasonNum : null,
             episode: item.media_type === 'tv' || item.first_air_date ? episodeNum : null,
+            currentTime: 0,
+            isPlaying: true,
+            serverIndex: activeServer,
+            audio: selectedAudio
         };
 
         setPlayingVideo(mediaData);
         setCurrentSeason(seasonNum);
         setCurrentEpisode(episodeNum);
+        setLiveTime(0);
+        setIsPlaying(true);
         setShowMediaModal(false);
         setSearchQuery('');
         setSearchResults([]);
 
-        const videoKey = `${mediaData.type}-${mediaData.id}-${seasonNum}-${episodeNum}`;
-        lastVideoRef.current = videoKey;
+        lastVideoKeyRef.current = `${mediaData.type}-${mediaData.id}-${seasonNum}-${episodeNum}`;
 
-        // Broadcast to party room
+        const formattedCode = (roomCode || '').toUpperCase();
         if (socket && socket.connected) {
             socket.emit('start_video', {
-                room: (roomCode || '').toUpperCase(),
+                room: formattedCode,
                 ...mediaData
             });
         }
@@ -272,14 +440,14 @@ export default function PartyRoomWaiting() {
             fallbackChannel.emit('video_sync', mediaData);
         }
 
-        // Update local room cache
+        // Cache locally for peer resilience
         try {
             const raw = localStorage.getItem('anicine_local_rooms');
             const map = raw ? JSON.parse(raw) : {};
-            const code = (roomCode || '').toUpperCase();
-            if (map[code]) {
-                map[code].playing = mediaData;
-                map[code].media = mediaData;
+            if (map[formattedCode]) {
+                map[formattedCode].playing = mediaData;
+                map[formattedCode].media = mediaData;
+                map[formattedCode].currentTime = 0;
                 localStorage.setItem('anicine_local_rooms', JSON.stringify(map));
             }
         } catch (e) {}
@@ -288,15 +456,40 @@ export default function PartyRoomWaiting() {
     const handleEpisodeChange = (newEp) => {
         setCurrentEpisode(newEp);
         if (!playingVideo) return;
-        const updated = { ...playingVideo, season: currentSeason, episode: newEp };
+        const updated = { 
+            ...playingVideo, 
+            season: currentSeason, 
+            episode: newEp,
+            currentTime: 0,
+            isPlaying: true
+        };
         setPlayingVideo(updated);
+        setLiveTime(0);
         
+        lastVideoKeyRef.current = `${updated.type}-${updated.id}-${currentSeason}-${newEp}`;
+
         if (isHost) {
+            const formattedCode = (roomCode || '').toUpperCase();
             if (socket && socket.connected) {
-                socket.emit('start_video', { room: (roomCode || '').toUpperCase(), ...updated });
+                socket.emit('start_video', { room: formattedCode, ...updated });
             }
             if (fallbackChannel) {
                 fallbackChannel.emit('video_sync', updated);
+            }
+        }
+    };
+
+    const handleServerChange = (idx) => {
+        setActiveServer(idx);
+        if (isHost) {
+            const formattedCode = (roomCode || '').toUpperCase();
+            if (socket && socket.connected) {
+                socket.emit('time_update', {
+                    room: formattedCode,
+                    currentTime: liveTimeRef.current,
+                    isPlaying: true,
+                    serverIndex: idx
+                });
             }
         }
     };
@@ -327,7 +520,7 @@ export default function PartyRoomWaiting() {
     return (
         <div className="flex flex-col h-screen w-full bg-[#070707] text-white overflow-hidden font-['Plus_Jakarta_Sans',sans-serif]">
             
-            {/* Top Control Bar */}
+            {/* Top Navigation & Status Bar */}
             <header className="h-14 px-3 sm:px-6 border-b border-white/5 flex items-center justify-between shrink-0 bg-[#0d0d0d] z-30 shadow-md">
                 <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                     <button 
@@ -342,24 +535,44 @@ export default function PartyRoomWaiting() {
                         <div className="flex items-center gap-2">
                             <span className="text-xs font-black uppercase tracking-wider font-['Syne',sans-serif] text-white">ROOM</span>
                             <span className="text-[#1db954] bg-[#1db954]/10 border border-[#1db954]/20 px-2 py-0.5 rounded-full text-xs font-mono font-black">{roomCode}</span>
+                            
+                            {/* Live Badge */}
+                            {playingVideo && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] font-black uppercase tracking-wider animate-pulse">
+                                    <Radio size={10} /> LIVE
+                                </span>
+                            )}
                         </div>
                         <div className="flex items-center gap-2 text-[9px] text-white/40 font-bold uppercase tracking-wider truncate">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span>{viewers.length} Online</span>
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>{viewers.length} In Room</span>
                             <span>•</span>
                             <span className="text-white/30 truncate">{playingVideo?.title || 'Waiting for Stream'}</span>
+                            {playingVideo && <span>• {formatSeconds(liveTime)}</span>}
                         </div>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                    {/* Server status badge */}
+                    {/* Live Sync Re-sync Button for Viewers */}
+                    {!isHost && playingVideo && (
+                        <button
+                            onClick={handleReSyncWithHost}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition ${isSynced ? 'bg-white/5 border-white/10 text-white/70 hover:text-[#1db954]' : 'bg-[#1db954]/20 border-[#1db954]/40 text-[#1db954]'}`}
+                            title="Jump to Host's Live Timestamp"
+                        >
+                            <RefreshCw size={12} className={!isSynced ? 'animate-spin' : ''} />
+                            <span className="hidden sm:inline">Sync Live ({formatSeconds(liveTime)})</span>
+                        </button>
+                    )}
+
+                    {/* Server status indicator */}
                     <button
                         onClick={() => setShowServerModal(true)}
                         className={`px-2.5 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1.5 ${serverConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-white/5 border-white/10 text-white/50 hover:text-white'}`}
                     >
                         <Server size={13} />
-                        <span className="hidden md:inline">{serverConnected ? 'Cloud Active' : 'Offline Peer'}</span>
+                        <span className="hidden md:inline">{serverConnected ? 'Live Cloud' : 'Offline Peer'}</span>
                     </button>
 
                     {/* Change Media Button for Host */}
@@ -369,7 +582,7 @@ export default function PartyRoomWaiting() {
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1db954] hover:bg-emerald-400 text-black rounded-xl text-[10px] font-black uppercase tracking-wider transition shadow-lg shadow-[#1db954]/20 active:scale-95 cursor-pointer"
                         >
                             <Film size={13} />
-                            <span className="hidden sm:inline">{playingVideo ? 'Change Media' : 'Pick Movie/Show'}</span>
+                            <span className="hidden sm:inline">{playingVideo ? 'Change Stream' : 'Pick Movie/Show'}</span>
                         </button>
                     )}
 
@@ -400,30 +613,34 @@ export default function PartyRoomWaiting() {
                 <main className="flex-1 flex flex-col min-w-0 bg-black overflow-y-auto custom-scrollbar">
                     {playingVideo && playingVideo.id ? (
                         <div className="flex flex-col h-full">
-                            {/* Video Player Frame Container */}
+                            {/* Live Streaming Synced Video Player */}
                             <div className="w-full bg-black relative flex-1 min-h-[260px] sm:min-h-[380px] lg:min-h-[440px] max-h-[75vh] flex items-center justify-center">
                                 <iframe
-                                    key={`${activeServer}-${playingVideo.id}-${currentSeason}-${currentEpisode}-${selectedAudio}`}
+                                    key={`${activeServer}-${playingVideo.id}-${currentSeason}-${currentEpisode}-${selectedAudio}-${Math.floor(liveTime / 60)}`}
                                     src={SERVERS[activeServer]?.url(
                                         playingVideo.id, 
                                         playingVideo.type, 
                                         currentSeason, 
                                         currentEpisode, 
-                                        selectedAudio
+                                        selectedAudio,
+                                        liveTime
                                     )}
                                     className="w-full h-full border-none"
                                     allowFullScreen
                                     allow="autoplay; encrypted-media; picture-in-picture"
-                                    title="Watch Party Player"
+                                    title="Live Watch Party Stream"
                                 ></iframe>
                             </div>
 
-                            {/* Cinema Bar & Controls under player */}
+                            {/* Cinema Bar & Controls */}
                             <div className="p-4 sm:p-5 bg-[#0d0d0d] border-t border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                 <div className="min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                                         <span className="px-2 py-0.5 rounded bg-[#1db954]/10 text-[#1db954] border border-[#1db954]/20 text-[9px] font-black uppercase">
                                             {playingVideo.type === 'tv' ? `S${currentSeason} : E${currentEpisode}` : 'MOVIE'}
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded bg-white/5 text-white/60 text-[9px] font-mono font-bold">
+                                            LIVE: {formatSeconds(liveTime)}
                                         </span>
                                         <span className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
                                             Station: {SERVERS[activeServer]?.name}
@@ -440,7 +657,7 @@ export default function PartyRoomWaiting() {
                                     {SERVERS.map((srv, idx) => (
                                         <button
                                             key={idx}
-                                            onClick={() => setActiveServer(idx)}
+                                            onClick={() => handleServerChange(idx)}
                                             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition ${activeServer === idx ? 'bg-[#1db954] text-black shadow-md' : 'bg-white/5 text-white/50 hover:text-white border border-white/5'}`}
                                         >
                                             {srv.name}
@@ -449,7 +666,7 @@ export default function PartyRoomWaiting() {
                                 </div>
                             </div>
 
-                            {/* TV Show Episode Picker (if TV series) */}
+                            {/* TV Show Episode Picker */}
                             {playingVideo.type === 'tv' && episodesList.length > 0 && (
                                 <div className="p-4 bg-[#090909] border-t border-white/5">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2.5">
@@ -471,7 +688,7 @@ export default function PartyRoomWaiting() {
                             )}
                         </div>
                     ) : (
-                        /* Empty / Waiting Stage */
+                        /* Empty Stage / Waiting for Stream */
                         <div className="h-full flex flex-col items-center justify-center p-6 sm:p-12 text-center">
                             <div className="relative mb-6">
                                 <div className="absolute inset-0 bg-[#1db954]/20 blur-3xl rounded-full"></div>
@@ -480,12 +697,12 @@ export default function PartyRoomWaiting() {
                                 </div>
                             </div>
                             <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white mb-2 font-['Syne',sans-serif]">
-                                {isHost ? "Ready to Stream" : "Waiting for Host"}
+                                {isHost ? "Ready to Stream Live" : "Waiting for Host to Stream"}
                             </h2>
                             <p className="text-white/40 max-w-md text-xs sm:text-sm leading-relaxed mb-6">
                                 {isHost
-                                    ? "Select any movie, anime, or series to start broadcasting immediately to everyone in this room."
-                                    : "The host has not started a video yet. Chat with others while you wait!"}
+                                    ? "Select any movie, anime, or TV series. Your playback timestamp will synchronize automatically with all viewers!"
+                                    : "The host has not started a video yet. Once they hit play, your player will automatically launch and sync live!"}
                             </p>
 
                             {isHost && (
