@@ -1,0 +1,6 @@
+{
+  "name": "AniCine",
+  "description": "Full-featured streaming, anime, manga, music, and watch party web application",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
