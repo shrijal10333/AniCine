@@ -3,6 +3,31 @@
 
 <head>
   <meta charset="UTF-8" />
+  <script>
+    // Safeguard for environments where window.fetch has only a getter
+    (function() {
+      try {
+        if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+          var nativeFetch = window.fetch.bind(window);
+          var activeFetch = nativeFetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return activeFetch;
+            },
+            set: function(fn) {
+              if (typeof fn === 'function') {
+                activeFetch = fn;
+              }
+            },
+            configurable: true,
+            enumerable: true
+          });
+        }
+      } catch (e) {
+        // Ignore if unable to re-define
+      }
+    })();
+  </script>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AniCine — Stream Movies, Anime, Manga & Music</title>
