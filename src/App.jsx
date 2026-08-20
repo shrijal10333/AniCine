@@ -74,7 +74,7 @@ function AppContent() {
             isSidebarHidden={isPartyRoom || isMangaReader || isFeed || isNowPlaying}
           />
         )}
-        <main className={`flex-1 ${!isNowPlaying && !isMusic ? 'pt-14 md:pt-20' : ''} ${!isPartyRoom && !isChannels && !isMangaReader && !isFeed && !isNowPlaying ? 'pb-10' : ''}`}>
+        <main className={`flex-1 ${!isNowPlaying && !isMusic && !isPartyRoom ? 'pt-14 md:pt-20' : ''} ${!isPartyRoom && !isChannels && !isMangaReader && !isFeed && !isNowPlaying ? 'pb-10' : ''}`}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/anime" element={<Anime />} />
@@ -103,7 +103,7 @@ function AppContent() {
             <Route path="/profile" element={<Profile />} />
           </Routes>
         </main>
-        {!isNowPlaying && <MusicPlayer />}
+        {!isNowPlaying && !isPartyRoom && <MusicPlayer />}
       </div>
     </div>
   );
