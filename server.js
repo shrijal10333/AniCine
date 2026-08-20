@@ -482,17 +482,19 @@ io.on('connection', (socket) => {
 });
 
 // ── Vite Integration / Production Static ──
-if (process.env.NODE_ENV !== 'production') {
+const distPath = path.join(__dirname, 'dist');
+const indexHtmlPath = path.join(distPath, 'index.html');
+
+if (process.env.NODE_ENV !== 'production' || !fs.existsSync(indexHtmlPath)) {
     const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: 'spa'
     });
     app.use(vite.middlewares);
 } else {
-    const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
+        res.sendFile(indexHtmlPath);
     });
 }
 
