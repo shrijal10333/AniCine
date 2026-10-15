@@ -1,4 +1,4 @@
-import { Search, Bell, Menu, Sparkles, ArrowLeft } from 'lucide-react';
+import { Search, Bell, Menu, Sparkles, ArrowLeft, Loader2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { fetchApi, getImageUrl } from '../api';
 import { useNavigate, Link, useLocation } from 'react-router-dom';

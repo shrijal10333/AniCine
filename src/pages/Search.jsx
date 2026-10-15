@@ -1,115 +1,194 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { fetchApi } from '../api';
 import MovieCard from '../components/MovieCard';
 import MovieSkeleton from '../components/MovieSkeleton';
-import { Search as SearchIcon, Zap, ArrowLeft, TrendingUp, Star } from 'lucide-react';
+import { Search as SearchIcon, ArrowLeft, Globe, Filter, X, Zap } from 'lucide-react';
 
 export default function Search() {
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
-    const query = searchParams.get('q');
+    const queryParam = searchParams.get('q') || '';
 
+    const [searchInput, setSearchInput] = useState(queryParam);
+    const [mediaType, setMediaType] = useState('all'); // 'all' | 'anime' | 'movie' | 'tv'
+    const [audioLang, setAudioLang] = useState('all'); // 'all' | 'ja' | 'en' | 'hi'
     const [items, setItems] = useState([]);
-    const [trending, setTrending] = useState([]);
     const [loading, setLoading] = useState(false);
+    const debounceTimeout = useRef(null);
 
+    // Sync input with queryParam on change
     useEffect(() => {
-        // Load trending for sidebar
-        fetchApi('/trending/all/day').then(data => {
-            if (data && data.results) setTrending(data.results.slice(0, 8));
-        });
-    }, []);
-
-    useEffect(() => {
-        if (query) {
-            setLoading(true);
-            fetchApi('/search/multi', { query, include_adult: false }).then(data => {
-                if (data && data.results) {
-                    setItems(data.results.filter(i => i.media_type !== 'person' && i.poster_path));
-                }
-                setLoading(false);
-            });
+        if (queryParam !== searchInput) {
+            setSearchInput(queryParam);
         }
-    }, [query]);
+    }, [queryParam]);
+
+    // Debounced search execution
+    useEffect(() => {
+        if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+
+        if (!searchInput.trim()) {
+            setItems([]);
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        debounceTimeout.current = setTimeout(async () => {
+            const params = {
+                q: searchInput.trim(),
+                type: mediaType !== 'all' ? mediaType : undefined,
+                audio_lang: audioLang !== 'all' ? audioLang : undefined
+            };
+
+            const data = await fetchApi('/api/tmdb/search', params);
+            if (data && data.results) {
+                // Filter out non-media items
+                const valid = data.results.filter(i => i.media_type !== 'person' && (i.poster_path || i.backdrop_path));
+                setItems(valid);
+            } else {
+                setItems([]);
+            }
+            setLoading(false);
+        }, 350);
+
+        return () => {
+            if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+        };
+    }, [searchInput, mediaType, audioLang]);
+
+    const handleInputChange = (e) => {
+        const val = e.target.value;
+        setSearchInput(val);
+        setSearchParams(val ? { q: val } : {});
+    };
+
+    const clearSearch = () => {
+        setSearchInput('');
+        setSearchParams({});
+        setItems([]);
+    };
 
     return (
-        <div className="min-h-screen bg-[#080808] pt-4 pb-60 px-4 md:px-16 overflow-hidden">
-            <div className="max-w-[1920px] mx-auto relative z-10 grid grid-cols-1 xl:grid-cols-12 gap-16">
-                {/* Main Results Column */}
-                <div className="xl:col-span-9 space-y-24">
-                    {/* Editorial Header */}
-                    <header className="flex flex-col md:flex-row md:items-end justify-between gap-10 animate-entrance">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-4 mb-6">
-                                 <button onClick={() => navigate(-1)} className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all">
-                                     <ArrowLeft size={18} />
-                                 </button>
-                                 <div className="h-[1px] w-12 bg-[#ff4d4d] opacity-60"></div>
-                                 <span className="text-[10px] font-black uppercase tracking-[0.5em] text-[#ff4d4d]">Search Results</span>
-                            </div>
-                            <h1 className="text-2xl md:text-4xl lg:text-7xl font-black italic uppercase tracking-tighter text-white leading-[0.85] mb-4 md:mb-8 break-words drop-shadow-2xl">
-                                Results <br /> <span className="text-white/20">{query || 'Search'}</span>
-                            </h1>
-                            <div className="flex items-center gap-10 text-[10px] font-bold uppercase tracking-[0.3em] text-white/40">
-                                 <span className="flex items-center gap-2"><Zap size={14} className="text-[#ff4d4d]" /> Archive Query Active</span>
-                                 <span>Found: {items.length} Nodes</span>
-                                 <span className="px-3 py-1 border border-white/5 rounded-md text-[#1db954]">GLOBAL_SYNC</span>
-                            </div>
-                        </div>
-                    </header>
-
-                    {/* Results Grid */}
-                    <section>
-                        {loading ? (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-10">
-                                {Array.from({ length: 12 }).map((_, i) => <MovieSkeleton key={i} />)}
-                            </div>
-                        ) : items.length > 0 ? (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-10 gap-y-20">
-                                {items.map((item, idx) => (
-                                    <div key={`${item.id}-${idx}`} className="animate-entrance" style={{ animationDelay: `${idx * 50}ms` }}>
-                                        <MovieCard item={item} type={item.media_type} />
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="py-40 text-center bg-white/5 rounded-[60px] border border-white/5 italic">
-                                 <p className="text-white/20 text-[11px] font-black uppercase tracking-[0.5em]">Transmission Offline: No Matches for "{query}" in Archive</p>
-                            </div>
-                        )}
-                    </section>
+        <div className="min-h-screen bg-[#0B0B0E] text-textMain px-4 md:px-12 py-6 max-w-7xl mx-auto">
+            {/* Search Header */}
+            <div className="mb-8 space-y-4">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={() => navigate(-1)} 
+                        className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-textMuted hover:text-white"
+                    >
+                        <ArrowLeft size={18} />
+                    </button>
+                    <div>
+                        <h1 className="text-xl md:text-3xl font-black text-white uppercase tracking-tight">
+                            Global <span className="text-primary">Search & Discovery</span>
+                        </h1>
+                        <p className="text-xs text-textMuted">
+                            Search anime, movies, series, and filter by verified audio tracks.
+                        </p>
+                    </div>
                 </div>
 
-                {/* Trending Sidebar (Image 3 Inspiration) */}
-                <aside className="xl:col-span-3 space-y-12">
-                      <div className="flex items-center gap-4 mb-4">
-                           <TrendingUp size={20} className="text-[#ff4d4d]" />
-                           <h2 className="text-2xl font-black uppercase tracking-tighter italic">Top Trending</h2>
-                      </div>
-                      
-                      <div className="flex flex-col gap-6">
-                         {trending.map((item, idx) => (
-                             <Link key={item.id} to={`/watch/${item.media_type}/${item.id}`} className="flex items-center gap-6 group p-4 rounded-2xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all duration-500">
-                                 <div className="text-2xl font-black italic tracking-tighter text-white/5 group-hover:text-[#ff4d4d] transition-colors">
-                                     0{idx + 1}
-                                 </div>
-                                 <div className="w-16 h-20 rounded-xl overflow-hidden shrink-0 border border-white/10">
-                                     <img src={item.poster_path ? `https://image.tmdb.org/t/p/w154${item.poster_path}` : ''} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                                 </div>
-                                 <div className="flex-1 min-w-0">
-                                      <h4 className="text-[12px] font-black uppercase tracking-tight truncate group-hover:text-[#ff4d4d] transition-colors">{item.title || item.name}</h4>
-                                      <div className="flex items-center gap-2 mt-1">
-                                           <Star size={10} className="text-[#1db954] fill-[#1db954]" />
-                                           <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{item.vote_average?.toFixed(1)}</span>
-                                      </div>
-                                 </div>
-                             </Link>
-                         ))}
-                      </div>
+                {/* Big Search Input */}
+                <div className="relative">
+                    <SearchIcon size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-primary" />
+                    <input 
+                        type="text"
+                        value={searchInput}
+                        onChange={handleInputChange}
+                        placeholder="Search Demon Slayer, Attack on Titan, Jujutsu Kaisen, Interstellar..."
+                        className="w-full bg-[#121217] border border-white/10 rounded-2xl pl-12 pr-10 py-4 text-sm font-medium text-white placeholder-white/30 outline-none focus:border-primary focus:shadow-[0_0_25px_rgba(139,92,246,0.25)] transition-all"
+                        autoFocus
+                    />
+                    {searchInput && (
+                        <button 
+                            onClick={clearSearch}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                        >
+                            <X size={18} />
+                        </button>
+                    )}
+                </div>
 
+                {/* Filter Chips Bar */}
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#121217] border border-white/5 text-xs font-bold">
+                        <span className="text-[10px] text-textMuted uppercase px-2 font-black">Type:</span>
+                        {['all', 'anime', 'movie', 'tv'].map(t => (
+                            <button
+                                key={t}
+                                onClick={() => setMediaType(t)}
+                                className={`px-3 py-1 rounded-lg uppercase tracking-wider text-[10px] font-black transition-all ${mediaType === t ? 'bg-primary text-white shadow-md' : 'text-textMuted hover:text-white'}`}
+                            >
+                                {t}
+                            </button>
+                        ))}
+                    </div>
 
-                </aside>
+                    {/* Audio Language Filter (CRITICAL for Test 9) */}
+                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#121217] border border-white/5 text-xs font-bold">
+                        <span className="flex items-center gap-1 text-[10px] text-textMuted uppercase px-2 font-black">
+                            <Globe size={11} className="text-primary" /> Verified Audio:
+                        </span>
+                        {[
+                            { code: 'all', label: 'All' },
+                            { code: 'ja', label: 'Japanese' },
+                            { code: 'en', label: 'English Dub' },
+                            { code: 'hi', label: 'Hindi Dub' }
+                        ].map(l => (
+                            <button
+                                key={l.code}
+                                onClick={() => setAudioLang(l.code)}
+                                className={`px-3 py-1 rounded-lg uppercase tracking-wider text-[10px] font-black transition-all ${audioLang === l.code ? 'bg-accentViolet text-white shadow-md' : 'text-textMuted hover:text-white'}`}
+                            >
+                                {l.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Results Section */}
+            <div>
+                {loading ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+                        {Array.from({ length: 10 }).map((_, i) => <MovieSkeleton key={i} />)}
+                    </div>
+                ) : items.length > 0 ? (
+                    <div>
+                        <div className="flex items-center justify-between text-xs text-textMuted mb-4 font-bold">
+                            <span>Found {items.length} titles</span>
+                            {audioLang !== 'all' && (
+                                <span className="text-primary">
+                                    Filtered by verified {audioLang.toUpperCase()} audio track
+                                </span>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+                            {items.map(item => (
+                                <MovieCard key={item.id} item={item} type={item.media_type || (mediaType === 'all' ? 'movie' : mediaType)} />
+                            ))}
+                        </div>
+                    </div>
+                ) : searchInput ? (
+                    <div className="py-24 text-center bg-[#121217] rounded-3xl border border-white/5 p-6">
+                        <SearchIcon size={36} className="text-white/20 mx-auto mb-3" />
+                        <h3 className="text-base font-black text-white uppercase tracking-wider mb-1">
+                            No titles found
+                        </h3>
+                        <p className="text-xs text-textMuted max-w-sm mx-auto">
+                            No results matched "{searchInput}" {audioLang !== 'all' ? `with verified ${audioLang.toUpperCase()} audio` : ''}.
+                        </p>
+                    </div>
+                ) : (
+                    <div className="py-20 text-center text-textMuted">
+                        <p className="text-xs font-bold uppercase tracking-widest text-white/30">
+                            Type to begin searching the AniCine entertainment archive
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );

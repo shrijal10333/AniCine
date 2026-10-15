@@ -47,9 +47,9 @@ export default function LiveF1() {
                                     <p className="text-white/60 max-w-lg font-medium text-sm md:text-base">To bypass Formula 1 publisher restrictions, we are building a custom stream proxy. For now, enjoy the full broadcast directly on YouTube.</p>
                                     
                                     <div className="flex flex-col md:flex-row gap-4 mt-6">
-                                        <button onClick={() => window.open(`https://www.youtube.com/watch?v=${activeVideo}`, '_blank')} className="bg-[#e10600] hover:bg-white text-white hover:text-[#e10600] px-8 py-4 rounded-full text-[11px] font-black uppercase tracking-[0.2em] transition-all shadow-2xl shadow-[#e10600]/30 active:scale-95 flex items-center justify-center gap-3">
+                                        <a href={`https://www.youtube.com/watch?v=${activeVideo}`} target="_blank" rel="noopener noreferrer" className="bg-[#e10600] hover:bg-white text-white hover:text-[#e10600] px-8 py-4 rounded-full text-[11px] font-black uppercase tracking-[0.2em] transition-all shadow-2xl shadow-[#e10600]/30 active:scale-95 flex items-center justify-center gap-3">
                                             Continue Watching on YT <ArrowRight size={14} />
-                                        </button>
+                                        </a>
                                         <button onClick={() => setActiveVideo(null)} className="px-8 py-4 rounded-full text-[11px] font-black uppercase tracking-[0.2em] bg-white/5 hover:bg-white/10 text-white transition-all border border-white/10 flex items-center justify-center">
                                             Go Back
                                         </button>

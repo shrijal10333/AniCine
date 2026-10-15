@@ -323,8 +323,7 @@ export default function PartyRoomWaiting() {
                 });
 
                 socket.on('kicked', () => {
-                    alert("You have been removed from the session by the host.");
-                    navigate('/party');
+                    navigate('/party', { state: { error: 'You have been removed from the session by the host.' } });
                 });
             }
         } catch (err) {

@@ -43,9 +43,9 @@ export default function LiveEsports() {
                                     allowFullScreen
                                 ></iframe>
                                 <div className="absolute top-4 right-4 z-30 flex items-center gap-3">
-                                    <button onClick={() => window.open(`https://www.youtube.com/watch?v=${activeVideo}`, '_blank')} className="bg-black/60 backdrop-blur-md hover:bg-black text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-white/20 transition-all flex items-center gap-2 shadow-xl">
+                                    <a href={`https://www.youtube.com/watch?v=${activeVideo}`} target="_blank" rel="noopener noreferrer" className="bg-black/60 backdrop-blur-md hover:bg-black text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-white/20 transition-all flex items-center gap-2 shadow-xl">
                                         Open on YouTube
-                                    </button>
+                                    </a>
                                     <button onClick={() => setActiveVideo(null)} className="bg-black/60 backdrop-blur-md hover:bg-[#a855f7] hover:text-white text-white w-8 h-8 rounded-xl flex items-center justify-center border border-white/20 transition-all shadow-xl font-bold">
                                         ✕
                                     </button>

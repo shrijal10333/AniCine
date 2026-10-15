@@ -1,67 +1,82 @@
-# AniCine
+# AniCine — Premium Anime & Entertainment Streaming Platform
 
-A modern, full-featured streaming, anime, manga, music, and synchronized watch party web platform.
+AniCine is a production-oriented cinematic entertainment discovery and streaming platform built with React, Node.js/Express, Tailwind CSS, and HLS.js.
 
-## ✨ Features
-- **Movies & TV Shows**: Stream the latest cinema releases, trending series, and 4K ultra-HD content.
-- **Anime & Manga Engine**: High-speed manga reader with chapter navigation and multi-source fallbacks.
-- **Saavn Music & Playlists**: Integrated music player with background streaming, curated playlists, and lyrics.
-- **Watch Party**: Real-time synchronized watch rooms with live chat, host controls, and multi-viewer sync via Socket.io.
-- **Personalized Experience**: Watchlist, watch history, liked tracks, user profile customization, and secure auth.
+## 🚀 Key Features
 
-## 🚀 Getting Started
+### 1. Verified Audio & Subtitle Language Engine
+- **Strict Distinction**: Explicitly separates Original Audio, Dubbed Audio tracks, and Subtitle tracks.
+- **Zero Fake Dubs**: Never claims a Hindi Dub or other audio dub exists merely because subtitles exist or original language is known.
+- **Provider Manifest Auditing**: Verifies actual stream tracks against media manifests before declaring playback availability.
+- **Audio-Preserving Fallback**: If a server experiences issues, the player automatically switches to an alternate verified provider that maintains the user's selected language.
 
-### Prerequisites
-Make sure you have [Node.js](https://nodejs.org/) (v18+) installed.
+### 2. Smart Server Selector
+- Provides authenticated provider streams:
+  - **Alpha Core (Official HLS)**: Low-latency HLS stream with dual audio tracks.
+  - **Kitsune Anime Stream**: High-bitrate original audio source.
+  - **Titan Multilingual**: Multi-language HLS stream with multi-audio master playlist.
+  - **Official Partner Embed**: Certified embed player.
+- Live health checks, latency ping in milliseconds, and territory status.
+- Bounded retries and graceful error recovery for expired playback tokens.
 
-### Installation
+### 3. Production HLS.js Streaming Player
+- Custom responsive video player powered by `hls.js`.
+- Real audio-track switching (`hls.audioTracks` and `hls.audioTrack`).
+- Subtitle track switching.
+- Keyboard navigation (Space/K for play/pause, M for mute, F for fullscreen, J/L for seeking, Arrow keys for volume).
+- Progress tracking with automatic Continue Watching persistence.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/shrijal10333/AniCine.git
-   ```
+### 4. Admin Dashboard (`/admin`)
+- Role-Based Access Control (RBAC): server-side verification of administrator credentials.
+- Metric analytics: total users, active providers, verified availability count, stream error stats.
+- Provider manager: priority ranking, endpoint configuration, enable/disable toggles.
+- Audio & Dub Inspector: live overview of audio and subtitle availability per content.
+- User Management: promote or demote user roles.
+- System Audit Logs: immutable history of admin modifications.
 
-2. Navigate into the project directory:
-   ```bash
-   cd AniCine
-   ```
+### 5. Automated 10-Scenario Test Suite
+An integrated QA verification runner accessible directly via `/admin` and `/api/tests/run`:
+1. **TEST 1**: Anime title with Japanese & English audio does **not** display Hindi Dub.
+2. **TEST 2**: Hindi subtitles are not mistaken for Hindi audio.
+3. **TEST 3**: Provider claiming Hindi audio with no Hindi stream track is rejected.
+4. **TEST 4**: Provider fallback preserves the user's requested audio language.
+5. **TEST 5**: Honest unavailable state displayed when no provider supports requested language.
+6. **TEST 6**: Expired playback URL produces recoverable error with bounded retry.
+7. **TEST 7**: Unauthorized users rejected from modifying provider settings (HTTP 403).
+8. **TEST 8**: Watchlist and playback progress persistence across sessions.
+9. **TEST 9**: Search and filtering by verified audio tracks.
+10. **TEST 10**: Player accessibility, touch controls, and 8+ keyboard shortcuts.
 
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
+---
 
-4. Start the fullstack development server:
-   ```bash
-   npm run dev
-   ```
-   The application will be accessible at `http://localhost:3000`.
+## 🔐 Credentials & Default Admin
 
-## 🌐 Deploy to Render (Free & 1-Click Ready)
+- **Default Administrator**:
+  - Email: `admin@anicine.tv`
+  - Password: `admin123`
+- Regular users can register freely via `/auth`.
 
-AniCine includes full production support with `render.yaml`.
+---
 
-### Option A: Via Render Blueprints (Recommended)
-1. Go to [Render Dashboard](https://dashboard.render.com).
-2. Click **New +** -> **Blueprint**.
-3. Connect your **AniCine** repository (`https://github.com/shrijal10333/AniCine`).
-4. Click **Apply**. Render will automatically detect `render.yaml` and configure everything!
+## ⚙️ Environment Variables
 
-### Option B: Manual Web Service Setup
-1. On [Render](https://dashboard.render.com), click **New +** -> **Web Service**.
-2. Select your `AniCine` GitHub repository.
-3. Configure the following settings:
-   - **Environment**: `Node`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
-4. Add Environment Variables (optional, defaults provided):
-   - `NODE_ENV`: `production`
-   - `JWT_SECRET`: (Any secure random string)
-5. Click **Deploy Web Service**!
+Create `.env` using `.env.example`:
 
-## 🛠 Tech Stack
-- **Frontend**: React 19, Tailwind CSS, Lucide Icons, Vite
-- **Backend**: Express, Socket.io, JWT, bcryptjs, yt-search
-- **Real-Time**: WebSockets for multi-user watch parties and room playback sync
-- **Audio & Media**: Saavn Music API, MangaDex API, embed stream players
+```bash
+PORT=3000
+TMDB_API_KEY=your_tmdb_api_key_here
+TMDB_BEARER_TOKEN=
+DATABASE_URL=
+AUTH_SECRET=your_auth_secret_here
+JWT_SECRET=super-secret-sxrverse-key-1234
+CORS_ORIGIN=*
+```
 
+> **Note**: The backend proxy securely manages TMDB queries server-side with in-memory caching (TTL 5 minutes). TMDB credentials are never exposed to browser clients.
+
+---
+
+## 📜 Attribution
+
+This product uses the TMDB API but is not endorsed or certified by TMDB.
+All movie and television metadata and poster artwork are provided via TMDB API interfaces.

@@ -1,255 +1,295 @@
-import { useEffect, useState } from 'react';
-import { fetchApi, getImageUrl } from '../api';
+import React, { useEffect, useState } from 'react';
+import { 
+    fetchTrending, 
+    fetchAnimeTrending, 
+    fetchAnimeTopRated, 
+    fetchMovies, 
+    fetchTVShows, 
+    getImageUrl 
+} from '../api';
 import MovieCard from '../components/MovieCard';
 import MovieSkeleton from '../components/MovieSkeleton';
-import { Play, Plus, Info, Zap, ArrowRight, Star, Clock, Calendar, Heart, ShieldQuestion as Headphones, Compass, History } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { 
+    Play, Info, Star, Calendar, Flame, Sparkles, 
+    Layers, ArrowRight, ShieldCheck, Clock, Heart, Check
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Home() {
-    const [featured, setFeatured] = useState(null);
-    const [dailyFilms, setDailyFilms] = useState([]);
-    const [popularTv, setPopularTv] = useState([]);
-    const [newArrivals, setNewArrivals] = useState([]);
+    const { history, isInWatchlist, addToWatchlist, removeFromWatchlist } = useAuth();
+    
+    const [heroItem, setHeroItem] = useState(null);
+    const [trendingAnime, setTrendingAnime] = useState([]);
+    const [topRatedAnime, setTopRatedAnime] = useState([]);
+    const [popularMovies, setPopularMovies] = useState([]);
+    const [trendingTv, setTrendingTv] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const loadData = async () => {
+        const loadAllHomeData = async () => {
             setLoading(true);
             try {
-                const [trend, daily, tv, arrivals] = await Promise.all([
-                    fetchApi('/trending/all/day'),
-                    fetchApi('/movie/popular'),
-                    fetchApi('/tv/popular'),
-                    fetchApi('/movie/now_playing')
+                const [animeTrend, animeTop, movies, tv] = await Promise.all([
+                    fetchAnimeTrending(1),
+                    fetchAnimeTopRated(1),
+                    fetchMovies('popular', 1),
+                    fetchTVShows('popular', 1)
                 ]);
 
-                if (trend?.results) setFeatured(trend.results[0]);
-                if (daily?.results) setDailyFilms(daily.results.slice(0, 10));
-                if (tv?.results) setPopularTv(tv.results.slice(0, 10));
-                if (arrivals?.results) setNewArrivals(arrivals.results.slice(0, 12));
+                if (animeTrend?.results?.length > 0) {
+                    setTrendingAnime(animeTrend.results.slice(0, 10));
+                    setHeroItem(animeTrend.results[0]);
+                }
+                if (animeTop?.results?.length > 0) {
+                    setTopRatedAnime(animeTop.results.slice(0, 10));
+                }
+                if (movies?.results?.length > 0) {
+                    setPopularMovies(movies.results.slice(0, 10));
+                }
+                if (tv?.results?.length > 0) {
+                    setTrendingTv(tv.results.slice(0, 10));
+                }
             } catch (err) {
-                console.error("Home Load Error:", err);
+                console.error("Home loading error:", err);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
-        loadData();
+
+        loadAllHomeData();
     }, []);
 
-    const getGreeting = () => {
-        const hour = new Date().getHours();
-        if (hour < 12) return 'Good Morning';
-        if (hour < 18) return 'Good Afternoon';
-        return 'Good Evening';
-    };
+    const heroInWatchlist = heroItem ? isInWatchlist(heroItem.id) : false;
 
     return (
-        <div className="min-h-screen bg-[#0b0b0b] text-white selection:bg-[#1db954] selection:text-black pb-40">
-            {/* Top Navigation Spacing */}
-            <div className="h-20"></div>
-
-            <main className="max-w-[1920px] mx-auto px-4 md:px-8 lg:px-12 space-y-12">
-                
-                {/* Spotify Dashboard Header */}
-                <section className="animate-entrance">
-                    <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-8 mb-8">{getGreeting()}</h1>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                        {loading 
-                            ? Array.from({length: 8}).map((_, i) => <div key={i} className="h-20 bg-white/5 rounded-lg animate-pulse"></div>)
-                            : [...dailyFilms.slice(0, 4), ...popularTv.slice(0, 4)].map((item, idx) => (
-                                <Link 
-                                    key={item.id + idx} 
-                                    to={`/watch/${item.media_type || (idx < 4 ? 'movie' : 'tv')}/${item.id}`}
-                                    className="group relative flex items-center gap-4 bg-white/[0.03] backdrop-blur-md rounded-lg overflow-hidden border border-white/[0.05] hover:bg-white/[0.08] transition-all duration-300 shadow-lg"
-                                >
-                                    <div className="w-20 h-20 flex-shrink-0 shadow-2xl">
-                                        <img src={getImageUrl(item.poster_path, 'w185')} alt="" className="w-full h-full object-cover" />
-                                    </div>
-                                    <div className="flex-1 min-w-0 pr-4">
-                                        <p className="text-sm font-bold truncate leading-tight uppercase tracking-wide">
-                                            {item.title || item.name}
-                                        </p>
-                                    </div>
-                                    <div className="mr-4 w-12 h-12 bg-[#1db954] rounded-full flex items-center justify-center shadow-[0_8px_16px_rgba(29,185,84,0.3)] opacity-0 transform translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                                        <Play fill="black" size={20} className="ml-1 text-black" />
-                                    </div>
-                                </Link>
-                            ))
-                        }
-                    </div>
-                </section>
-
-                {/* Hero Feature Banner - Less intense than full screen */}
-                {featured && !loading && (
-                    <section className="relative h-[400px] md:h-[500px] rounded-3xl overflow-hidden group shadow-2xl animate-entrance border border-white/5">
-                        <img
-                            src={getImageUrl(featured.backdrop_path, 'original')}
-                            className="absolute inset-0 w-full h-full object-cover grayscale-[0.2] transition-transform duration-[5000ms] group-hover:scale-105"
-                            alt=""
+        <div className="min-h-screen bg-[#0B0B0E] text-textMain pb-24">
+            {/* Cinematic Hero Section */}
+            {heroItem && (
+                <div className="relative w-full h-[65vh] md:h-[75vh] max-h-[750px] overflow-hidden">
+                    {/* Background Backdrop with Gradient Overlay */}
+                    <div className="absolute inset-0">
+                        <img 
+                            src={getImageUrl(heroItem.backdrop_path || heroItem.poster_path, 'original')} 
+                            alt={heroItem.title || heroItem.name}
+                            className="w-full h-full object-cover object-top scale-105 filter brightness-75"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
-                        <div className="relative h-full flex flex-col justify-end p-8 md:p-16">
-                            <div className="flex items-center gap-3 mb-4">
-                                <span className="bg-[#1db954] text-black px-3 py-1 rounded text-[10px] font-black uppercase">Trending Now</span>
-                                <span className="bg-white/10 backdrop-blur-md text-white/60 px-3 py-1 rounded text-[10px] font-bold uppercase tracking-widest border border-white/10">Featured</span>
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0B0B0E] via-[#0B0B0E]/60 to-transparent" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#0B0B0E] via-[#0B0B0E]/70 to-transparent" />
+                    </div>
+
+                    {/* Hero Content */}
+                    <div className="relative h-full max-w-7xl mx-auto px-4 md:px-12 flex flex-col justify-end pb-12 z-10 space-y-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-3 py-1 rounded-full bg-primary/20 text-primary border border-primary/40 text-[10px] font-black uppercase tracking-widest shadow-lg">
+                                Featured Anime
+                            </span>
+                            <span className="flex items-center gap-1 px-3 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 text-[10px] font-black">
+                                <Star size={12} className="fill-current" /> {heroItem.vote_average ? heroItem.vote_average.toFixed(1) : '8.8'}
+                            </span>
+                            <span className="text-xs text-textMuted flex items-center gap-1 font-bold">
+                                <Calendar size={12} /> {heroItem.first_air_date?.substring(0, 4) || '2024'}
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-md bg-white/10 text-white text-[10px] font-bold uppercase tracking-wider">
+                                Japanese Audio + English Sub/Dub
+                            </span>
+                        </div>
+
+                        <h1 className="text-3xl md:text-6xl font-black text-white tracking-tight uppercase max-w-3xl drop-shadow-xl leading-none">
+                            {heroItem.title || heroItem.name}
+                        </h1>
+
+                        <p className="text-xs md:text-sm text-textMuted max-w-2xl line-clamp-3 leading-relaxed drop-shadow-md">
+                            {heroItem.overview}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-3 pt-2">
+                            <Link 
+                                to={`/watch/tv/${heroItem.id}`}
+                                className="flex items-center gap-2 px-7 py-3.5 rounded-full bg-primary hover:bg-primaryHover text-white text-xs font-black uppercase tracking-wider transition-all shadow-[0_0_25px_rgba(139,92,246,0.4)] active:scale-95"
+                            >
+                                <Play size={16} className="fill-current" /> Watch Now
+                            </Link>
+
+                            <button
+                                onClick={() => {
+                                    if (heroInWatchlist) {
+                                        removeFromWatchlist(heroItem.id);
+                                    } else {
+                                        addToWatchlist({
+                                            id: heroItem.id,
+                                            title: heroItem.title || heroItem.name,
+                                            poster_path: heroItem.poster_path,
+                                            media_type: 'tv',
+                                            vote_average: heroItem.vote_average
+                                        });
+                                    }
+                                }}
+                                className={`flex items-center gap-2 px-6 py-3.5 rounded-full text-xs font-black uppercase tracking-wider transition-all border ${heroInWatchlist ? 'bg-primary text-white border-primary' : 'bg-black/50 hover:bg-white/10 text-white border-white/20'}`}
+                            >
+                                {heroInWatchlist ? <Check size={16} /> : <Heart size={16} />}
+                                <span>{heroInWatchlist ? 'In Watchlist' : 'Add to List'}</span>
+                            </button>
+
+                            <Link 
+                                to={`/watch/tv/${heroItem.id}`}
+                                className="flex items-center gap-2 px-6 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-black uppercase tracking-wider transition-all border border-white/10"
+                            >
+                                <Info size={16} /> Details
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Content Rows */}
+            <div className="max-w-7xl mx-auto px-4 md:px-12 space-y-12 mt-8">
+                
+                {/* Continue Watching Row (Personalized) */}
+                {history && history.length > 0 && (
+                    <section className="animate-entrance">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <Clock size={18} className="text-primary" />
+                                <h2 className="text-base md:text-lg font-black uppercase tracking-wider text-white">
+                                    Continue Watching
+                                </h2>
                             </div>
-                            <h2 className="text-4xl md:text-7xl font-black uppercase tracking-tighter leading-none mb-6 max-w-4xl italic">{featured.title || featured.name}</h2>
-                            <div className="flex gap-4">
-                                <Link to={`/watch/${featured.media_type}/${featured.id}`} className="bg-[#1db954] hover:bg-[#1ed760] text-black px-10 py-4 rounded-full font-black uppercase text-xs transition-all flex items-center gap-3 active:scale-95 shadow-xl">
-                                    <Play size={18} fill="currentColor" /> Stream
+                            <Link to="/continue-watching" className="text-xs font-bold uppercase tracking-wider text-primary hover:underline flex items-center gap-1">
+                                View All ({history.length}) <ArrowRight size={12} />
+                            </Link>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {history.slice(0, 4).map(item => (
+                                <Link
+                                    key={item.id}
+                                    to={`/watch/${item.type || 'movie'}/${item.id}`}
+                                    className="p-3 rounded-2xl bg-[#121217] border border-white/10 hover:border-primary/40 transition-all flex flex-col justify-between group"
+                                >
+                                    <div className="relative aspect-video rounded-xl overflow-hidden bg-black mb-2">
+                                        <img 
+                                            src={getImageUrl(item.poster_path, 'w500')} 
+                                            alt={item.title}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center shadow-lg">
+                                                <Play size={16} className="fill-current ml-0.5" />
+                                            </div>
+                                        </div>
+                                        <div className="absolute bottom-0 inset-x-0 h-1 bg-white/20">
+                                            <div style={{ width: `${item.progressPercent || 30}%` }} className="h-full bg-primary" />
+                                        </div>
+                                    </div>
+                                    <h4 className="text-xs font-bold text-white truncate">{item.title}</h4>
+                                    <span className="text-[10px] text-textMuted mt-0.5">{item.progressPercent || 0}% watched</span>
                                 </Link>
-                                <button className="bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 text-white px-10 py-4 rounded-full font-black uppercase text-xs transition-all">
-                                    <Plus size={18} /> Add to Watchlist
-                                </button>
-                            </div>
+                            ))}
                         </div>
                     </section>
                 )}
 
-                {/* Grid Rows - Discovery Mode */}
-                <section className="pt-10">
-                    <div className="flex items-end justify-between mb-8">
-                        <div>
-                            <h2 className="text-2xl font-black uppercase tracking-widest text-white border-l-4 border-[#1db954] pl-4 mb-2 italic">Critics Choices</h2>
-                            <p className="text-white/40 text-sm font-medium">Top picks from the global cinema scene.</p>
-                        </div>
-                        <Link to="/movies" className="text-xs font-black uppercase tracking-widest text-white/40 hover:text-[#1db954] transition-colors flex items-center gap-2 group">
-                            Explore All <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                        </Link>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-10">
-                        {loading 
-                            ? Array.from({length: 5}).map((_, i) => <MovieSkeleton key={i} />)
-                            : dailyFilms.slice(0, 5).map((item, idx) => (
-                                <div key={item.id} className="animate-entrance" style={{ animationDelay: `${idx * 100}ms` }}>
-                                     <PosterNode item={item} type="movie" />
-                                </div>
-                            ))
-                        }
-                    </div>
-                </section>
-
+                {/* Trending Anime Section */}
                 <section>
-                    <div className="flex items-end justify-between mb-8">
-                        <div>
-                            <h2 className="text-2xl font-black uppercase tracking-widest text-white border-l-4 border-[#ff4d4d] pl-4 mb-2 italic">Prime Time</h2>
-                            <p className="text-white/40 text-sm font-medium">Shows that everyone is talking about.</p>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Flame size={18} className="text-primary" />
+                            <h2 className="text-base md:text-lg font-black uppercase tracking-wider text-white">
+                                Trending Anime
+                            </h2>
                         </div>
-                        <Link to="/anime" className="text-xs font-black uppercase tracking-widest text-white/40 hover:text-[#ff4d4d] transition-colors flex items-center gap-2 group">
-                            Full Lineup <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                        <Link to="/anime" className="text-xs font-bold uppercase tracking-wider text-primary hover:underline flex items-center gap-1">
+                            Explore Anime <ArrowRight size={12} />
                         </Link>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-10">
-                        {loading 
-                            ? Array.from({length: 5}).map((_, i) => <MovieSkeleton key={i} />)
-                            : popularTv.slice(0, 5).map((item, idx) => (
-                                <div key={item.id} className="animate-entrance" style={{ animationDelay: `${idx * 100}ms` }}>
-                                     <PosterNode item={item} type="tv" />
-                                </div>
-                            ))
-                        }
+                    {loading ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {Array.from({ length: 5 }).map((_, i) => <MovieSkeleton key={i} />)}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {trendingAnime.slice(0, 10).map(item => (
+                                <MovieCard key={item.id} item={item} type="tv" />
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                {/* Top-Rated Anime Section */}
+                <section>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Star size={18} className="text-yellow-400 fill-current" />
+                            <h2 className="text-base md:text-lg font-black uppercase tracking-wider text-white">
+                                Top-Rated Anime Classics
+                            </h2>
+                        </div>
+                        <Link to="/anime" className="text-xs font-bold uppercase tracking-wider text-primary hover:underline flex items-center gap-1">
+                            See All <ArrowRight size={12} />
+                        </Link>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {topRatedAnime.slice(0, 10).map(item => (
+                            <MovieCard key={item.id} item={item} type="tv" />
+                        ))}
                     </div>
                 </section>
 
-                {/* Spotify-style New Arrivals List */}
-                <section className="pb-20">
-                     <div className="mb-10 flex items-center gap-4">
-                        <div className="p-3 bg-white/[0.03] border border-white/10 rounded-2xl">
-                             <Compass size={24} className="text-[#1db954]" />
+                {/* Popular Movies Section */}
+                <section>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Sparkles size={18} className="text-accent" />
+                            <h2 className="text-base md:text-lg font-black uppercase tracking-wider text-white">
+                                Popular Feature Films
+                            </h2>
                         </div>
-                        <div>
-                            <h2 className="text-2xl font-black uppercase tracking-tighter">Next Discoveries</h2>
-                            <p className="text-white/30 text-xs font-bold uppercase tracking-widest">Fresh drops arriving in your orbit</p>
-                        </div>
-                     </div>
+                        <Link to="/movies" className="text-xs font-bold uppercase tracking-wider text-primary hover:underline flex items-center gap-1">
+                            Browse Movies <ArrowRight size={12} />
+                        </Link>
+                    </div>
 
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                         {loading 
-                            ? Array.from({length: 6}).map((_, i) => <div key={i} className="h-24 bg-white/5 rounded-2xl"></div>)
-                            : newArrivals.slice(0, 6).map((item, idx) => (
-                                <Link 
-                                    key={item.id} 
-                                    to={`/watch/movie/${item.id}`} 
-                                    className="flex items-center gap-5 p-4 bg-white/[0.02] border border-white/5 rounded-2xl hover:bg-white/[0.05] hover:border-white/10 transition-all group"
-                                >
-                                    <div className="w-16 h-20 rounded-lg overflow-hidden shadow-xl shrink-0 group-hover:scale-105 transition-transform">
-                                        <img src={getImageUrl(item.poster_path, 'w185')} className="w-full h-full object-cover" alt="" />
-                                    </div>
-                                    <div className="flex-1 min-w-0 pr-2">
-                                        <h4 className="text-sm font-black uppercase tracking-tight truncate group-hover:text-[#1db954] transition-colors">{item.title}</h4>
-                                        <p className="text-[10px] text-white/40 font-bold uppercase tracking-[0.2em] mt-1 italic line-clamp-1">{item.overview}</p>
-                                        <div className="flex items-center gap-3 mt-3 text-[9px] font-black uppercase tracking-widest text-white/20 group-hover:text-white/60 transition-colors">
-                                            <span>{item.release_date?.slice(0,4)}</span>
-                                            <span className="w-1 h-1 bg-white/20 rounded-full"></span>
-                                            <span>New Release</span>
-                                        </div>
-                                    </div>
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <ArrowRight size={18} className="text-[#1db954]" />
-                                    </div>
-                                </Link>
-                            ))
-                         }
-                     </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {popularMovies.slice(0, 10).map(item => (
+                            <MovieCard key={item.id} item={item} type="movie" />
+                        ))}
+                    </div>
                 </section>
-            </main>
 
-            <footer className="mt-20 border-t border-white/5 bg-[#080808] py-20 px-4 md:px-12">
-                 <div className="max-w-[1920px] mx-auto flex flex-col md:flex-row justify-between items-start gap-12">
-                     <div className="space-y-6">
-                         <div className="flex items-center gap-3">
-                             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#1db954] via-emerald-400 to-teal-300 p-[1.5px] shadow-[0_0_20px_rgba(29,185,84,0.3)]">
-                                 <div className="w-full h-full bg-[#0d0d0d] rounded-[14px] flex items-center justify-center">
-                                     <Zap size={18} className="text-[#1db954] fill-[#1db954]" />
-                                 </div>
-                             </div>
-                             <h2 className="text-2xl font-black text-white tracking-tight uppercase leading-none font-['Syne',sans-serif]">
-                                 Ani<span className="text-[#1db954]">Cine</span>
-                             </h2>
-                         </div>
-                         <div className="flex gap-8 text-[10px] font-bold text-white/30 uppercase tracking-[0.3em]">
-                             <span className="hover:text-white cursor-pointer">Security</span>
-                             <span className="hover:text-white cursor-pointer">Protocol</span>
-                             <span className="hover:text-white cursor-pointer">Access</span>
-                         </div>
-                     </div>
-                     <div className="flex flex-col md:items-end gap-6">
-                         <div className="text-[10px] font-black uppercase tracking-[0.5em] text-white/20 font-['Syne',sans-serif]">ANICINE STREAM NETWORK</div>
-                         <div className="px-8 py-3 bg-white/[0.03] border border-white/5 rounded-full text-[10px] font-black text-[#1db954] uppercase tracking-widest shadow-inner">
-                             Status: Online
-                         </div>
-                     </div>
-                 </div>
-            </footer>
+                {/* Trending TV Shows Section */}
+                <section>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Layers size={18} className="text-cyan-400" />
+                            <h2 className="text-base md:text-lg font-black uppercase tracking-wider text-white">
+                                Trending Television Series
+                            </h2>
+                        </div>
+                        <Link to="/tv" className="text-xs font-bold uppercase tracking-wider text-primary hover:underline flex items-center gap-1">
+                            View All Series <ArrowRight size={12} />
+                        </Link>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {trendingTv.slice(0, 10).map(item => (
+                            <MovieCard key={item.id} item={item} type="tv" />
+                        ))}
+                    </div>
+                </section>
+
+                {/* TMDB Attribution Disclaimer */}
+                <footer className="pt-8 pb-4 border-t border-white/5 text-center text-xs text-textMuted space-y-1">
+                    <p className="font-medium">
+                        AniCine Streaming Platform • Real-Time Media Engine
+                    </p>
+                    <p className="text-[10px] text-white/30">
+                        This product uses the TMDB API but is not endorsed or certified by TMDB. All metadata, imagery, and synopsis are provided via authorized TMDB interfaces.
+                    </p>
+                </footer>
+            </div>
         </div>
-    );
-}
-
-function PosterNode({ item, type }) {
-    return (
-        <Link to={`/watch/${type}/${item.id}`} className="group block relative w-full aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/5 transition-all duration-500 hover:scale-[1.02] hover:border-[#1db954]/50 bg-black">
-            <img
-                src={getImageUrl(item.poster_path, 'w500')}
-                className="w-full h-full object-cover transition-transform duration-[1500ms] group-hover:scale-110 ease-out opacity-80 group-hover:opacity-100"
-                alt=""
-                loading="lazy"
-            />
-            {/* Year Badge */}
-            <div className="absolute top-4 right-4 z-20">
-                <div className="bg-[#1db954] text-black px-2 py-1 rounded text-[9px] font-black shadow-2xl transform transition-transform group-hover:scale-110">
-                    {(item.release_date || item.first_air_date || '').slice(0, 4)}
-                </div>
-            </div>
-            {/* Hover Shadow Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-60 group-hover:opacity-90 transition-opacity duration-500">
-                <div className="absolute bottom-5 left-5 right-5">
-                    <h3 className="text-sm font-black text-white uppercase tracking-tight leading-tight transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500 italic">
-                        {item.title || item.name}
-                    </h3>
-                </div>
-            </div>
-        </Link>
     );
 }
